@@ -1,0 +1,162 @@
+"""Modeler agent — statistics + classic ML on the numeric features:
+
+* Pearson correlation matrix + top pairs
+* KMeans clusters (with a 2-D PCA projection for plotting)
+* Isolation Forest anomaly flags
+* optional PyTorch autoencoder anomaly detector (soft dependency)
+
+Chart-ready arrays are stored under modeling["_viz"] and stripped from the
+JSON report returned to the client — the Visualizer bakes them into figures.
+"""
+import numpy as np
+import pandas as pd
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import StandardScaler
+
+from ..utils import num_or_none
+
+try:  # optional heavy dependency
+    import torch
+    import torch.nn as nn
+
+    HAS_TORCH = True
+except Exception:  # noqa: BLE001
+    torch = None
+    nn = None
+    HAS_TORCH = False
+
+MAX_VIZ_POINTS = 3000
+MAX_AE_ROWS = 20000
+AE_MIN_ROWS = 100
+
+
+def _autoencoder_mse(Z: np.ndarray):
+    """Reconstruction MSE per row from a small dense autoencoder, or None."""
+    n, d = Z.shape
+    if not (AE_MIN_ROWS <= n <= MAX_AE_ROWS and d >= 3):
+        return None
+    torch.manual_seed(42)
+    X = torch.tensor(Z, dtype=torch.float32)
+    h1, h2 = max(8, d // 2), max(4, d // 3)
+    autoencoder = nn.Sequential(
+        nn.Linear(d, h1), nn.ReLU(),
+        nn.Linear(h1, h2), nn.ReLU(),
+        nn.Linear(h2, h1), nn.ReLU(),
+        nn.Linear(h1, d),
+    )
+    optimizer = torch.optim.Adam(autoencoder.parameters(), lr=1e-3)
+    for _ in range(40):
+        optimizer.zero_grad()
+        loss = ((autoencoder(X) - X) ** 2).mean()
+        loss.backward()
+        optimizer.step()
+    with torch.no_grad():
+        mse = ((autoencoder(X) - X) ** 2).mean(dim=1).numpy()
+    return mse
+
+
+def modeler_agent(state: dict) -> dict:
+    df = state.get("df")
+    if df is None:
+        return {}
+
+    num = df.select_dtypes(include=np.number)
+    modeling = {
+        "numeric_columns": [str(c) for c in num.columns],
+        "correlation": None,
+        "clustering": None,
+        "anomalies": None,
+        "autoencoder": None,
+    }
+    if num.shape[1] < 2 or len(df) < 5:
+        return {"modeling": modeling}
+
+    # Working set: numeric, non-constant, imputed
+    work = num.copy()
+    for c in work.columns:
+        if work[c].nunique(dropna=True) <= 1:
+            work = work.drop(columns=c)
+    work = work.fillna(work.median())
+    if work.shape[1] < 2 or len(work) < 5:
+        return {"modeling": modeling}
+
+    # --- correlations (on the original numeric columns) ---
+    corr = num.corr()
+    cols = [str(c) for c in corr.columns]
+    pairs = []
+    for i in range(len(cols)):
+        for j in range(i + 1, len(cols)):
+            r = num_or_none(corr.iloc[i, j], 3)
+            if r is not None:
+                pairs.append({"x": cols[i], "y": cols[j], "r": r})
+    pairs.sort(key=lambda p: abs(p["r"]), reverse=True)
+    matrix = {c1: {c2: num_or_none(corr.loc[c1, c2], 3) for c2 in cols} for c1 in cols}
+    modeling["correlation"] = {"matrix": matrix, "top_pairs": pairs[:8]}
+
+    # --- scale once, reuse everywhere ---
+    Z = StandardScaler().fit_transform(work.values.astype(float))
+    feat_names = [str(c) for c in work.columns]
+
+    # --- PCA projection (for charts) ---
+    pca = PCA(n_components=2, random_state=42)
+    P = pca.fit_transform(Z)
+
+    # --- KMeans clusters ---
+    labels = None
+    k = 3 if len(Z) >= 15 else 2
+    if len(Z) >= 2 * k:
+        km = KMeans(n_clusters=k, n_init=10, random_state=42)
+        labels = km.fit_predict(Z)
+        modeling["clustering"] = {
+            "k": int(k),
+            "features": feat_names,
+            "sizes": [int(s) for s in np.bincount(labels, minlength=k)],
+            "pca_explained_variance": [num_or_none(v, 3) for v in pca.explained_variance_ratio_],
+        }
+
+    # --- Isolation Forest anomalies ---
+    iso = IsolationForest(n_estimators=150, contamination=0.02, random_state=42)
+    pred = iso.fit_predict(Z)
+    anomaly_flags = pred == -1
+    modeling["anomalies"] = {
+        "method": "isolation_forest",
+        "count": int(anomaly_flags.sum()),
+        "rate": round(float(anomaly_flags.mean()), 4),
+        "example_row_numbers": (np.where(anomaly_flags)[0][:20] + 1).tolist(),
+    }
+
+    # --- optional PyTorch autoencoder ---
+    if HAS_TORCH:
+        try:
+            mse = _autoencoder_mse(Z)
+            if mse is not None:
+                threshold = float(np.quantile(mse, 0.98))
+                ae_flags = mse > threshold
+                modeling["autoencoder"] = {
+                    "available": True,
+                    "count": int(ae_flags.sum()),
+                    "threshold": num_or_none(threshold, 6),
+                    "overlap_with_isolation_forest": int((ae_flags & anomaly_flags).sum()),
+                    "mse_stats": {"mean": num_or_none(mse.mean(), 6), "max": num_or_none(mse.max(), 6)},
+                }
+        except Exception:  # noqa: BLE001 — AE is best-effort
+            modeling["autoencoder"] = {"available": False, "error": "autoencoder training failed"}
+
+    # --- chart-ready bundle (kept out of the client report) ---
+    rng = np.random.default_rng(42)
+    anom_idx = np.where(anomaly_flags)[0]
+    norm_idx = np.where(~anomaly_flags)[0]
+    room = max(0, MAX_VIZ_POINTS - len(anom_idx))
+    take_norm = rng.choice(norm_idx, size=min(len(norm_idx), room), replace=False)
+    sel = np.concatenate([anom_idx, take_norm]).astype(int)
+    modeling["_viz"] = {
+        "pca_x": P[sel, 0].tolist(),
+        "pca_y": P[sel, 1].tolist(),
+        "cluster_labels": labels[sel].tolist() if labels is not None else None,
+        "anomaly": anomaly_flags[sel].tolist(),
+        "features": feat_names,
+    }
+
+    return {"modeling": modeling}

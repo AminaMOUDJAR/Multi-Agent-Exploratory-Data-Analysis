@@ -1,0 +1,15 @@
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+pandas>=2.1
+numpy>=1.26
+scikit-learn>=1.4
+plotly>=5.20
+langgraph>=0.2,<1.0
+openai>=1.30
+python-dotenv>=1.0
+openpyxl>=3.1
+
+# Optional: enables the PyTorch autoencoder anomaly detector in the Modeler agent.
+# The app works fine without it (the detector is skipped automatically).
+# torch>=2.2

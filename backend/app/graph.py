@@ -1,0 +1,41 @@
+"""LangGraph wiring — one linear StateGraph, one node per agent.
+
+Each agent is a pure function over the shared EDAState, which makes the
+graph trivial to extend later (loops, conditional edges, human-in-the-loop).
+"""
+from langgraph.graph import END, START, StateGraph
+
+from .agents import (
+    cleaner_agent,
+    insights_agent,
+    loader_agent,
+    modeler_agent,
+    profiler_agent,
+    visualizer_agent,
+)
+from .state import EDAState
+
+PIPELINE = ["loader", "cleaner", "profiler", "modeler", "visualizer", "insights"]
+
+_AGENTS = {
+    "loader": loader_agent,
+    "cleaner": cleaner_agent,
+    "profiler": profiler_agent,
+    "modeler": modeler_agent,
+    "visualizer": visualizer_agent,
+    "insights": insights_agent,
+}
+
+
+def build_pipeline():
+    graph = StateGraph(EDAState)
+    for name in PIPELINE:
+        graph.add_node(name, _AGENTS[name])
+    graph.add_edge(START, "loader")
+    for a, b in zip(PIPELINE, PIPELINE[1:]):
+        graph.add_edge(a, b)
+    graph.add_edge("insights", END)
+    return graph.compile()
+
+
+eda_graph = build_pipeline()
