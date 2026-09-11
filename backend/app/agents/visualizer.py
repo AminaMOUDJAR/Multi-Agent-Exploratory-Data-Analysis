@@ -18,7 +18,8 @@ _DARK = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
     margin=dict(l=45, r=15, t=10, b=40),
-    font=dict(size=11),
+    # comic sans in the charts too, the user was clear about this
+    font=dict(family='"Comic Sans MS", "Comic Sans", "Chalkboard SE", cursive', size=11),
 )
 
 
