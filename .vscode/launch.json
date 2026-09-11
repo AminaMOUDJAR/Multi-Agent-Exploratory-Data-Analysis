@@ -1,0 +1,18 @@
+{
+  // F5 debugs the fastapi backend. the frontend doesn't need a debugger,
+  // it's started by the "frontend: dev" task (Ctrl+Shift+B) or plain npm run dev
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "backend: uvicorn (debug)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--reload", "--port", "8000"],
+      "cwd": "${workspaceFolder}/backend",
+      "python": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
+      "jinja": true,
+      "console": "integratedTerminal"
+    }
+  ]
+}
