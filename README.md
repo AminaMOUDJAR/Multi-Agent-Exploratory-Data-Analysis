@@ -127,11 +127,3 @@ frontend/
 sample_data/       # generated demo dataset
 scripts/           # data generator
 ```
-
-## Using Google Antigravity
-
-Open this repo folder in Antigravity and let its agents extend the project, e.g.:
-
-> "Add a LangGraph ReAct agent that answers follow-up questions by generating and
-> executing pandas code against the uploaded dataframe instead of relying on the
-> static profile context."

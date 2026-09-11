@@ -69,12 +69,12 @@ function ColumnTable({ columns }) {
       <table>
         <thead>
           <tr>
-            <th>Column</th>
+            <th>Feature</th>
             <th>Role</th>
-            <th>Dtype</th>
-            <th>Holes</th>
-            <th>Unique</th>
-            <th>Notes</th>
+            <th>Data Type</th>
+            <th>Missing (Null)</th>
+            <th>Cardinality</th>
+            <th>Summary Statistics</th>
           </tr>
         </thead>
         <tbody>
@@ -99,7 +99,7 @@ function ColumnTable({ columns }) {
                 <td style={{ color: "var(--muted)" }}>{c.dtype}</td>
                 <td style={{ color: c.missing_before ? "var(--warn)" : undefined }}>
                   {c.missing_before}
-                  {c.missing > 0 && <small> → {c.missing} left</small>}
+                  {c.missing > 0 && <small> → {c.missing} residual</small>}
                 </td>
                 <td>{c.unique}</td>
                 <td style={{ color: "var(--muted)", maxWidth: 380, overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -131,21 +131,21 @@ export default function Dashboard({ report }) {
     <>
       <div className="panel">
         <h2>
-          Specimen report — {report.file_name}
+          Exploratory Data Analysis — {report.file_name}
           <small style={{ color: "var(--muted)", textTransform: "none", fontWeight: 400 }}>
             {" "}
-            · assayed in {report.pipeline_seconds}s
+            · execution latency: {report.pipeline_seconds}s
           </small>
         </h2>
         <div className="stats">
-          <Stat label="Specimens (rows)" value={fmt(ov.rows)} />
-          <Stat label="Variables" value={fmt(ov.columns)} />
-          <Stat label="Purity" value={fmt(ov.completeness_pct)} suffix="%" />
-          <Stat label="Clones purged" value={fmt(cleaning.duplicates_removed ?? 0)} />
-          <Stat label="Cells backfilled" value={fmt(nImputed)} />
-          <Stat label="Oddballs flagged" value={report.anomalies ? fmt(report.anomalies.count) : "—"} />
-          <Stat label="Colonies found" value={report.clustering ? fmt(report.clustering.k) : "—"} />
-          <Stat label="Footprint" value={fmt(ov.memory_mb)} suffix="MB" />
+          <Stat label="Observations (Rows)" value={fmt(ov.rows)} />
+          <Stat label="Features (Columns)" value={fmt(ov.columns)} />
+          <Stat label="Completeness" value={fmt(ov.completeness_pct)} suffix="%" />
+          <Stat label="Duplicates Removed" value={fmt(cleaning.duplicates_removed ?? 0)} />
+          <Stat label="Imputed Values" value={fmt(nImputed)} />
+          <Stat label="Anomalies Detected" value={report.anomalies ? fmt(report.anomalies.count) : "—"} />
+          <Stat label="Clusters Identified" value={report.clustering ? fmt(report.clustering.k) : "—"} />
+          <Stat label="Memory Usage" value={fmt(ov.memory_mb)} suffix="MB" />
         </div>
       </div>
 
@@ -173,7 +173,7 @@ export default function Dashboard({ report }) {
 
       {tab === "Variables" && (
         <div className="panel">
-          <h2>Variable census</h2>
+          <h2>Feature Schema & Profiling</h2>
           <ColumnTable columns={report.columns || []} />
           {cleaning.imputations?.length > 0 && (
             <p className="hint">

@@ -119,10 +119,10 @@ export default function App() {
           }}
         >
           <div className="big">
-            {busy ? "Assays in progress…" : "Pipette a .csv / .xlsx specimen onto the bench (or click to browse)"}
+            {busy ? "Assays in progress…" : "Upload a .csv / .xlsx dataset (or click to browse)"}
           </div>
           <div>
-            no specimen handy? there's one in the fridge: <b>sample_data/sales_sample.csv</b>
+            import your dataset or use the sample dataset:  <b>sample_data/sales_sample.csv</b>
           </div>
           <input
             ref={fileInputRef}

@@ -2,6 +2,5 @@
   // make the venv the default interpreter so the debugger and the
   // python extension pick it up without manual selecting
   "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
-  "python.terminal.activateEnvironment": true,
-  "editor.fontFamily": "'Comic Sans MS', 'Comic Sans', cursive"
+  "python.terminal.activateEnvironment": true
 }
