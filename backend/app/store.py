@@ -1,8 +1,6 @@
-"""In-memory LRU store for generated reports (report_id -> {report, context}).
-
-Keeps the last 20 reports; good enough for a local dev tool. Swap for Redis
-or a DB if you need persistence across restarts.
-"""
+# reports are small (the df stays in the pipeline) so a dict + an LRU cap of
+# 20 is plenty for a local tool. if you want them to survive a restart, swap
+# this for sqlite or redis, the rest of the code only calls save/get.
 import uuid
 from collections import OrderedDict
 from threading import Lock

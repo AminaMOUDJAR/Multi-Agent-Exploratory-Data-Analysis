@@ -2,7 +2,8 @@ import os
 
 from dotenv import load_dotenv
 
-# Always load backend/.env regardless of the current working directory.
+# .env lives in backend/, but uvicorn can be started from anywhere
+# (root, backend/, an IDE...) so build the path instead of hoping cwd works
 _ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
 load_dotenv(_ENV_PATH)
 
@@ -20,9 +21,10 @@ LLM_ENABLED = bool(OPENAI_API_KEY)
 
 
 def llm_client():
-    """Return an OpenAI-compatible client, or None when no key is configured.
+    """OpenAI client or None if there's no key.
 
-    Works with OpenAI, Groq, Together, Ollama (+ /v1), LM Studio, etc.
+    anything that speaks the openai api works here: groq, openai, together,
+    ollama (+ /v1), LM studio, you name it.
     """
     if not LLM_ENABLED:
         return None

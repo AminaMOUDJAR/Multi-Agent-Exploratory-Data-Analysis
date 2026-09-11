@@ -1,4 +1,6 @@
-"""Profiler agent — schema, dtypes, roles, missingness, per-column stats."""
+# builds the column-level profile: a guessed "role" per column plus basic stats.
+# roles drive the charts downstream, so a column that's really an id shouldn't
+# get a histogram (a 400-row table where every value is unique is an id).
 import pandas as pd
 
 from ..utils import num_or_none, short
@@ -12,6 +14,7 @@ def _classify(s: pd.Series) -> str:
     if pd.api.types.is_numeric_dtype(s):
         return "numeric"
     if s.dtype == object:
+        # all-unique + decent length -> probably a key, not a category
         if s.nunique(dropna=True) == len(s) and len(s) > 50:
             return "identifier"
         return "categorical"
@@ -50,7 +53,7 @@ def profiler_agent(state: dict) -> dict:
                 "mean": num_or_none(d["mean"]),
                 "std": num_or_none(d["std"]),
                 "min": num_or_none(d["min"], 6),
-                "median": num_or_none(s.median()),
+                "median": num_or_none(s.median()),  # describe() has no median key in some versions
                 "max": num_or_none(d["max"], 6),
             }
         elif role in ("categorical", "boolean"):
@@ -60,6 +63,7 @@ def profiler_agent(state: dict) -> dict:
             if s.notna().any():
                 info["range"] = [s.min().isoformat(), s.max().isoformat()]
 
+        # ids and weird dtypes: a peek at actual values says more than stats
         if role in ("identifier", "other"):
             info["sample"] = [short(v) for v in pd.unique(s.dropna().head(50))[:3]]
 

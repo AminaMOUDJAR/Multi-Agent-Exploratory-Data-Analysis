@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import Chart from "./Chart";
 
-/* ---------- tiny markdown renderer (headings, bullets, bold, code) ---------- */
+/* markdown rendering without a markdown dep. handles what the llm actually
+   emits in practice: ## headings, - bullets, **bold**, *italic*, `code`.
+   everything gets html-escaped first so a chatty model can't inject markup. */
 function renderMarkdown(text) {
   const esc = (s) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -70,13 +72,15 @@ function ColumnTable({ columns }) {
             <th>Column</th>
             <th>Role</th>
             <th>Dtype</th>
-            <th>Missing</th>
+            <th>Holes</th>
             <th>Unique</th>
-            <th>Summary</th>
+            <th>Notes</th>
           </tr>
         </thead>
         <tbody>
           {columns.map((c) => {
+            // one "notes" cell per role: stats for numeric, top values for
+            // cats, the range for dates, raw samples for ids
             let summary = "—";
             if (c.stats) {
               const s = c.stats;
@@ -110,10 +114,10 @@ function ColumnTable({ columns }) {
   );
 }
 
-const TABS = ["Dashboard", "Columns", "Insights"];
+const TABS = ["Plots", "Variables", "Lab notes"];
 
 export default function Dashboard({ report }) {
-  const [tab, setTab] = useState("Dashboard");
+  const [tab, setTab] = useState("Plots");
   const ov = report.overview || {};
 
   const cleaning = report.cleaning || {};
@@ -127,21 +131,21 @@ export default function Dashboard({ report }) {
     <>
       <div className="panel">
         <h2>
-          Overview — {report.file_name}
+          Specimen report — {report.file_name}
           <small style={{ color: "var(--muted)", textTransform: "none", fontWeight: 400 }}>
             {" "}
-            · analyzed in {report.pipeline_seconds}s
+            · assayed in {report.pipeline_seconds}s
           </small>
         </h2>
         <div className="stats">
-          <Stat label="Rows" value={fmt(ov.rows)} />
-          <Stat label="Columns" value={fmt(ov.columns)} />
-          <Stat label="Completeness" value={fmt(ov.completeness_pct)} suffix="%" />
-          <Stat label="Dupes removed" value={fmt(cleaning.duplicates_removed ?? 0)} />
-          <Stat label="Imputed cells" value={fmt(nImputed)} />
-          <Stat label="Anomalies" value={report.anomalies ? fmt(report.anomalies.count) : "—"} />
-          <Stat label="Clusters" value={report.clustering ? fmt(report.clustering.k) : "—"} />
-          <Stat label="Memory" value={fmt(ov.memory_mb)} suffix="MB" />
+          <Stat label="Specimens (rows)" value={fmt(ov.rows)} />
+          <Stat label="Variables" value={fmt(ov.columns)} />
+          <Stat label="Purity" value={fmt(ov.completeness_pct)} suffix="%" />
+          <Stat label="Clones purged" value={fmt(cleaning.duplicates_removed ?? 0)} />
+          <Stat label="Cells backfilled" value={fmt(nImputed)} />
+          <Stat label="Oddballs flagged" value={report.anomalies ? fmt(report.anomalies.count) : "—"} />
+          <Stat label="Colonies found" value={report.clustering ? fmt(report.clustering.k) : "—"} />
+          <Stat label="Footprint" value={fmt(ov.memory_mb)} suffix="MB" />
         </div>
       </div>
 
@@ -153,7 +157,7 @@ export default function Dashboard({ report }) {
         ))}
       </div>
 
-      {tab === "Dashboard" && (
+      {tab === "Plots" && (
         <>
           {report.charts?.length ? (
             <div className="grid">
@@ -162,21 +166,21 @@ export default function Dashboard({ report }) {
               ))}
             </div>
           ) : (
-            <div className="panel">No charts were generated for this dataset.</div>
+            <div className="panel">no plots came out of this one, sorry.</div>
           )}
         </>
       )}
 
-      {tab === "Columns" && (
+      {tab === "Variables" && (
         <div className="panel">
-          <h2>Column Profile</h2>
+          <h2>Variable census</h2>
           <ColumnTable columns={report.columns || []} />
           {cleaning.imputations?.length > 0 && (
             <p className="hint">
-              Cleaning: removed {cleaning.duplicates_removed} duplicate rows, imputed{" "}
-              {nImputed} missing cells
+              prep work: purged {cleaning.duplicates_removed} duplicate rows, backfilled {nImputed}{" "}
+              empty cells
               {cleaning.date_converted?.length
-                ? `, converted ${cleaning.date_converted.join(", ")} to datetime`
+                ? `, and talked ${cleaning.date_converted.join(", ")} into being real dates`
                 : ""}
               .
             </p>
@@ -184,12 +188,12 @@ export default function Dashboard({ report }) {
         </div>
       )}
 
-      {tab === "Insights" && insights.text && (
+      {tab === "Lab notes" && insights.text && (
         <div className="panel">
           <h2>
-            Insights
+            Lab notes
             <span className={`source-tag ${insights.source === "llm" ? "llm" : "template"}`}>
-              {insights.source === "llm" ? `LLM · ${insights.model}` : "rule-based fallback"}
+              {insights.source === "llm" ? `written by ${insights.model}` : "copied from the rulebook"}
             </span>
           </h2>
           <div

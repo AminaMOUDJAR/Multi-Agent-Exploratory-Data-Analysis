@@ -1,4 +1,6 @@
-"""Loader agent — pandas reads csv/tsv/txt/xlsx into the shared state."""
+# first stop: get the file into a dataframe. handles csv/tsv/txt (sniffs the
+# delimiter) plus xlsx via openpyxl. latin1 fallback because real-world csvs
+# are never utf-8 when you need them to be.
 import os
 
 import pandas as pd
@@ -14,11 +16,11 @@ def loader_agent(state: dict) -> dict:
             df = pd.read_excel(path)
         else:
             try:
-                # sep=None + engine="python" sniffs the delimiter (handles ; and \t too)
+                # sep=None + python engine = delimiter sniffing, catches ; and \t files
                 df = pd.read_csv(path, sep=None, engine="python")
             except UnicodeDecodeError:
                 df = pd.read_csv(path, sep=None, engine="python", encoding="latin1")
-    except Exception as exc:  # noqa: BLE001 — surfaced to the API caller
+    except Exception as exc:  # whatever broke, the api caller deserves to know
         return {"df": None, "error": f"Could not parse file: {exc}"}
 
     df.columns = [str(c).strip() or f"col_{i}" for i, c in enumerate(df.columns)]

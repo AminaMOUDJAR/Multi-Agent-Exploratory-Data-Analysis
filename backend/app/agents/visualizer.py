@@ -1,18 +1,18 @@
-"""Visualizer agent — builds Plotly figure specs (JSON) for the frontend.
-
-Charts are produced on the backend and rendered by React, so the dashboard
-can be regenerated/modified (e.g. by an LLM) without touching the frontend.
-"""
+# turns the pipeline results into plotly figure dicts (plain json).
+# these ship to react as-is, which means an LLM could regenerate/patch the
+# dashboard later without anyone touching frontend code. that's the whole
+# reason charts are built back here and not in the browser.
 import json
 import re
 
 import plotly.express as px
 import plotly.io as pio
 
-MAX_HIST_SAMPLE = 2000
+MAX_HIST_SAMPLE = 2000  # histograms don't need every row
 MAX_NUMERIC_CHARTS = 8
 MAX_CATEGORICAL_CHARTS = 6
 
+# dark, transparent bg so the cards show through
 _DARK = dict(
     template="plotly_dark",
     paper_bgcolor="rgba(0,0,0,0)",
@@ -23,6 +23,7 @@ _DARK = dict(
 
 
 def _slug(name: str) -> str:
+    # chart ids end up as react keys, keep them url/dom safe
     return re.sub(r"[^a-zA-Z0-9]+", "_", str(name)).strip("_")[:40] or "col"
 
 
@@ -31,7 +32,7 @@ def _fig_json(fig, showlegend=None):
     if showlegend is not None:
         layout["showlegend"] = showlegend
     fig.update_layout(**layout)
-    # pio.to_json handles numpy scalars and NaN -> null
+    # pio.to_json sorts out numpy scalars and turns NaN into null
     return json.loads(pio.to_json(fig))
 
 
@@ -47,11 +48,12 @@ def visualizer_agent(state: dict) -> dict:
     charts = []
 
     def add(cid, title, fig, wide=False, showlegend=None):
+        # wide charts (heatmap, scatters) get a full row in the frontend grid
         charts.append(
             {"id": cid, "title": title, "wide": wide, "figure": _fig_json(fig, showlegend)}
         )
 
-    # 1) missingness before cleaning
+    # 1) missingness, so data quality is visible at a glance
     missing = cleaning.get("missing_before", {})
     if missing:
         items = sorted(missing.items(), key=lambda kv: -kv[1])[:15]
@@ -71,7 +73,7 @@ def visualizer_agent(state: dict) -> dict:
         fig.update_layout(coloraxis_colorbar=dict(len=0.85))
         add("heatmap", "Correlation matrix (Pearson r)", fig, wide=True, showlegend=False)
 
-    # 3) clusters + anomalies over the PCA projection
+    # 3) clusters + anomalies over the pca projection
     viz = modeling.get("_viz")
     if viz:
         if viz.get("cluster_labels") is not None:
@@ -86,13 +88,13 @@ def visualizer_agent(state: dict) -> dict:
         fig = px.scatter(
             x=viz["pca_x"], y=viz["pca_y"],
             color=["anomaly" if a else "normal" for a in viz["anomaly"]],
-            color_discrete_map={"anomaly": "#f87171", "normal": "#38bdf8"},
+            color_discrete_map={"anomaly": "#fb7185", "normal": "#2fd6b5"},
             labels={"x": "PC1", "y": "PC2"},
             opacity=0.75,
         )
         add("anomalies", f"Anomalies — Isolation Forest ({n_anom} flagged, PCA view)", fig, wide=True)
 
-    # 4) histograms for numeric columns (most-varied first)
+    # 4) histograms, most-varied columns first (a near-constant col makes a boring chart)
     numeric = [c["name"] for c in cols_info if c["role"] == "numeric"]
     numeric = sorted(numeric, key=lambda c: -df[c].nunique())[:MAX_NUMERIC_CHARTS]
     for c in numeric:
@@ -102,16 +104,16 @@ def visualizer_agent(state: dict) -> dict:
         if len(s) > MAX_HIST_SAMPLE:
             s = s.sample(MAX_HIST_SAMPLE, random_state=42)
         fig = px.histogram(x=s.tolist(), nbins=30, marginal="box", labels={"x": c})
-        fig.update_traces(marker_line_width=0, opacity=0.85)
+        fig.update_traces(marker_color="#2fd6b5", marker_line_width=0, opacity=0.85)
         add(f"hist_{_slug(c)}", f"Distribution — {c}", fig, showlegend=False)
 
-    # 5) bar charts for low-cardinality categoricals
+    # 5) low-cardinality categoricals as horizontal bars
     cats = [c["name"] for c in cols_info if c["role"] in ("categorical", "boolean")]
     cats = [c for c in cats if 2 <= df[c].nunique() <= 50][:MAX_CATEGORICAL_CHARTS]
     for c in cats:
         vc = df[c].astype(str).value_counts().head(10).iloc[::-1]
         fig = px.bar(x=vc.values.tolist(), y=vc.index.tolist(), orientation="h")
-        fig.update_traces(marker_color="#38bdf8")
+        fig.update_traces(marker_color="#2fd6b5")
         add(f"cat_{_slug(c)}", f"Top values — {c}", fig, showlegend=False)
 
     return {"charts": charts}

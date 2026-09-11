@@ -1,9 +1,6 @@
-"""JSON-safety helpers.
-
-pandas/sklearn produce numpy scalars and NaN/Inf floats that break strict JSON
-(browsers reject `NaN` tokens). Everything returned to the frontend goes
-through `to_native` first.
-"""
+# pandas and sklearn love numpy scalars, NaN and np.bool_, none of which are
+# valid json (browsers choke on a bare NaN token). everything that goes out
+# through fastapi passes through to_native() first, learned that the hard way.
 import datetime as dt
 import math
 
@@ -41,7 +38,7 @@ def to_native(obj):
 
 
 def num_or_none(value, ndigits=4):
-    """float(value) rounded, or None when NaN/Inf/not-a-number."""
+    # float() + round, or None if it's NaN/inf/garbage. used all over the stats.
     try:
         f = float(value)
     except (TypeError, ValueError):

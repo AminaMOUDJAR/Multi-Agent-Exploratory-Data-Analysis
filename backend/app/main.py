@@ -1,10 +1,8 @@
-"""FastAPI entrypoint.
-
-POST /upload  → runs the full LangGraph pipeline, returns the JSON report
-POST /ask     → LLM Q&A grounded in the stored report context
-GET  /health  → status + capability flags
-GET  /reports/{id} → fetch a previously generated report
-"""
+# three endpoints:
+#   POST /upload  -> runs the whole langgraph pipeline, returns the report json
+#   POST /ask     -> llm q&a, grounded in the report the pipeline just built
+#   GET  /health  -> what's switched on (llm? torch?)
+# plus GET /reports/{id} to re-fetch a report by id.
 import os
 import tempfile
 import time
@@ -29,6 +27,7 @@ app = FastAPI(
     version="1.0.0",
     description="LangGraph pipeline: load → clean → profile → model → visualize → insights",
 )
+# dev tool, wide open cors is fine here
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -60,6 +59,7 @@ async def upload(file: UploadFile = File(...)):
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, "File too large (max 50 MB).")
 
+    # pandas needs a real path, so spool the upload to a temp file
     with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
         tmp.write(data)
         tmp_path = tmp.name
@@ -67,7 +67,7 @@ async def upload(file: UploadFile = File(...)):
     t0 = time.time()
     try:
         final_state = eda_graph.invoke({"file_path": tmp_path, "file_name": name})
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(500, f"Pipeline failed: {exc}")
     finally:
         try:
@@ -85,11 +85,13 @@ async def upload(file: UploadFile = File(...)):
 
 
 def _build_report(state: dict) -> dict:
+    # keys starting with "_" are internal (the modeler's chart arrays), strip
+    # them. to_native() because numpy stuff isn't valid json.
     prof = state.get("profile", {}) or {}
     modeling = state.get("modeling", {}) or {}
     modeling_public = {k: v for k, v in modeling.items() if not k.startswith("_")}
     report = {
-        "report_id": None,  # filled by the caller
+        "report_id": None,  # store fills this in after saving
         "file_name": state.get("file_name"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "agents": PIPELINE,
@@ -129,7 +131,7 @@ def ask(req: AskRequest):
             max_tokens=600,
         )
         answer = (resp.choices[0].message.content or "").strip()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(502, f"LLM call failed: {exc}")
     if not answer:
         raise HTTPException(502, "LLM returned an empty answer.")

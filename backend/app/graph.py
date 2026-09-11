@@ -1,8 +1,6 @@
-"""LangGraph wiring — one linear StateGraph, one node per agent.
-
-Each agent is a pure function over the shared EDAState, which makes the
-graph trivial to extend later (loops, conditional edges, human-in-the-loop).
-"""
+# langgraph wiring: a straight line, one node per agent.
+# every agent is a function over the shared EDAState, so adding a step later
+# (loops, conditional edges, a human sign-off node) is just another add_node.
 from langgraph.graph import END, START, StateGraph
 
 from .agents import (

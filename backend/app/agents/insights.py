@@ -1,6 +1,7 @@
-"""Insights agent — LLM narrative grounded in the pipeline results,
-with a deterministic rule-based template as fallback (zero-API-spend mode).
-"""
+# the write-up agent. tries the LLM first (grounded in a compact json summary
+# of everything the other agents found), falls back to a deterministic
+# template if there's no key or the call blows up. so the app is fully
+# usable with zero api spend, the template just reads drier.
 import json
 
 from ..config import LLM_MODEL, llm_client
@@ -42,8 +43,8 @@ def _columns_lines(cols, cap=40):
 
 
 def build_context(state: dict) -> str:
-    """Compact JSON summary of the whole report — feeds both the Insights
-    agent and the /ask chat endpoint."""
+    """compact json summary of everything the pipeline found. feeds both the
+    insights prompt here and the /ask endpoint. keep it small, tokens cost."""
     prof = state.get("profile", {}) or {}
     modeling = state.get("modeling", {}) or {}
     cleaning = state.get("cleaning", {}) or {}
@@ -79,7 +80,7 @@ def _llm(user_prompt: str, system: str = SYSTEM_PROMPT, max_tokens: int = 900, t
             max_tokens=max_tokens,
         )
         return ((resp.choices[0].message.content or "").strip() or None)
-    except Exception:  # noqa: BLE001 — any LLM failure falls back to templates
+    except Exception:  # any llm hiccup -> template, never a 500
         return None
 
 
@@ -104,6 +105,7 @@ def insights_agent(state: dict) -> dict:
 
 
 def _template(state: dict) -> str:
+    # no-key fallback. same facts as the llm prompt, just stitched together.
     prof = state.get("profile", {}) or {}
     modeling = state.get("modeling", {}) or {}
     cleaning = state.get("cleaning", {}) or {}

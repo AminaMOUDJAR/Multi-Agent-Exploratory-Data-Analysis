@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { askQuestion, getHealth, uploadFile } from "./api";
 import Dashboard from "./components/Dashboard";
 
+// pipeline order, mirrored from the backend so the chips under the
+// dropzone light up in the same sequence the agents actually run in
 const AGENTS = ["loader", "cleaner", "profiler", "modeler", "visualizer", "insights"];
 
 export default function App() {
   const [health, setHealth] = useState(null);
   const [report, setReport] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [stage, setStage] = useState(-1); // index into AGENTS, -1 = idle
+  const [stage, setStage] = useState(-1); // -1 = idle, then index into AGENTS
   const [error, setError] = useState("");
   const [drag, setDrag] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -18,6 +20,7 @@ export default function App() {
   const fileInputRef = useRef(null);
   const stageTimer = useRef(null);
 
+  // health check on load, drives the three badges up top
   useEffect(() => {
     getHealth().then(setHealth).catch(() => setHealth(false));
   }, []);
@@ -35,7 +38,8 @@ export default function App() {
     setBusy(true);
     setStage(0);
     setMessages([]);
-    // rotate through pipeline steps while the backend runs
+    // the backend runs the agents in one request, so we fake the progress:
+    // walk the chips every 450ms until the response lands
     stageTimer.current = setInterval(
       () => setStage((s) => (s < AGENTS.length - 1 ? s + 1 : s)),
       450
@@ -78,18 +82,19 @@ export default function App() {
     <div className="app">
       <header className="header">
         <div>
-          <h1>📊 Multi-Agent EDA</h1>
+          <h1>🧪 Multi-Agent EDA</h1>
           <div className="sub">
-            LangGraph pipeline · FastAPI · React — upload a CSV/Excel and get a dashboard + insights
+            a tiny data lab — drop a spreadsheet on the bench, the agent crew runs the assays,
+            you get plots and notes
           </div>
         </div>
         <div className="badges">
           <span className="badge">
             <span className={`dot ${health ? "on" : health === false ? "err" : "off"}`} />
-            {health ? "API online" : health === false ? "API offline" : "checking…"}
+            {health ? "bench online" : health === false ? "bench offline" : "powering up…"}
           </span>
           <span className="badge">
-            LLM <b>{llmOn ? "on" : "off"}</b>
+            lab intern (LLM) <b>{llmOn ? "on duty" : "off"}</b>
             {llmOn && health.llm_model ? ` · ${health.llm_model}` : ""}
           </span>
           <span className="badge">
@@ -113,10 +118,11 @@ export default function App() {
             if (!busy) pickFile(e.dataTransfer.files[0]);
           }}
         >
-          <div className="big">{busy ? "Running agent pipeline…" : "Drop a .csv / .xlsx file here, or click to browse"}</div>
+          <div className="big">
+            {busy ? "Assays in progress…" : "Pipette a .csv / .xlsx specimen onto the bench (or click to browse)"}
+          </div>
           <div>
-            The agents will clean, profile, model, chart, and summarize it — or try the bundled{" "}
-            <b>sample_data/sales_sample.csv</b>
+            no specimen handy? there's one in the fridge: <b>sample_data/sales_sample.csv</b>
           </div>
           <input
             ref={fileInputRef}
@@ -139,7 +145,7 @@ export default function App() {
             ))}
             {busy && <span className="spinner" />}
             {!busy && stage >= AGENTS.length && !error && (
-              <span className="step done">✓ report ready</span>
+              <span className="step done">✓ report typed up</span>
             )}
           </div>
         )}
@@ -151,13 +157,13 @@ export default function App() {
 
       {report && (
         <section className="panel">
-          <h2>Ask the data</h2>
+          <h2>Ask the lab tech</h2>
           <div className="chat-log">
             {messages.length === 0 && (
               <div className="hint">
                 {llmOn
-                  ? "Ask a follow-up question about this dataset — answers are grounded in the agent report."
-                  : "Chat requires an LLM key in backend/.env (OPENAI_API_KEY)."}
+                  ? "the tech only answers from the report the agents wrote. no made-up numbers."
+                  : "the lab tech is off duty — put an LLM key in backend/.env to hire one."}
               </div>
             )}
             {messages.map((m, i) => (
@@ -167,7 +173,7 @@ export default function App() {
             ))}
             {askBusy && (
               <div className="msg bot">
-                <span className="spinner" /> thinking…
+                <span className="spinner" /> checking the notebook…
               </div>
             )}
             <div ref={chatEndRef} />
@@ -176,7 +182,7 @@ export default function App() {
             <input
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder={llmOn ? "e.g. Which region has the highest average profit?" : "LLM key not configured"}
+              placeholder={llmOn ? "e.g. which variable looks the weirdest?" : "lab tech is off duty"}
               disabled={!llmOn || askBusy}
             />
             <button className="button" type="submit" disabled={!llmOn || askBusy || !question.trim()}>

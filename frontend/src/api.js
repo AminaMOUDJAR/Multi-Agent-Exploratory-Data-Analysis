@@ -1,3 +1,5 @@
+// thin wrapper over the backend. all urls go through /api so vite's dev
+// proxy (and later nginx or whatever) can route them, keeps cors out of the picture.
 const BASE = "/api";
 
 async function jsonError(res) {
@@ -6,7 +8,7 @@ async function jsonError(res) {
     const body = await res.json();
     detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail ?? body);
   } catch {
-    /* non-JSON error body */
+    // not json, just use the status code
   }
   return new Error(detail || `Request failed (${res.status})`);
 }

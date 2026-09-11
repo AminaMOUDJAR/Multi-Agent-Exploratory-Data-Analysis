@@ -1,14 +1,14 @@
-"""Generate sample_data/sales_sample.csv — a messy retail dataset with
-missing values, duplicates and outliers, ideal for testing the EDA pipeline.
+"""makes a messy fake sales csv so you can test the pipeline without hunting
+for a dataset. stdlib only, no deps.
 
-Uses only the standard library. Run:  python scripts/generate_sample_data.py
+run:  python scripts/generate_sample_data.py
 """
 import csv
 import random
 from datetime import date, timedelta
 from pathlib import Path
 
-random.seed(7)
+random.seed(7)  # same file every run, easier to debug
 
 REGIONS = ["East"] * 34 + ["West"] * 30 + ["North"] * 20 + ["South"] * 16
 CATEGORIES = {  # category -> (mean unit sales, sd)
@@ -40,7 +40,7 @@ for i in range(1, 381):
         "satisfaction": round(min(5, max(1, random.gauss(4.1, 0.8))), 1),
     })
 
-# Missing values (~3%)
+# poke holes in it, ~3% missing. real data is never clean.
 for r in random.sample(rows, 12):
     r["sales"] = ""
 for r in random.sample(rows, 10):
@@ -48,11 +48,11 @@ for r in random.sample(rows, 10):
 for r in random.sample(rows, 6):
     r["region"] = ""
 
-# Extreme outliers (typos / fraud-ish spikes)
+# a few absurd values, the kind a typo or double-entry produces
 for r in random.sample(rows, 6):
     r["sales"] = round(float(r["sales"] or 100) * 15, 2)
 
-# Duplicate rows
+# and some exact duplicate rows, because exports love doing this
 rows.extend(dict(r) for r in random.sample(rows, 18))
 random.shuffle(rows)
 

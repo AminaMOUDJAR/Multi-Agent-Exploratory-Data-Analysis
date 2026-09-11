@@ -1,13 +1,12 @@
-"""Modeler agent — statistics + classic ML on the numeric features:
-
-* Pearson correlation matrix + top pairs
-* KMeans clusters (with a 2-D PCA projection for plotting)
-* Isolation Forest anomaly flags
-* optional PyTorch autoencoder anomaly detector (soft dependency)
-
-Chart-ready arrays are stored under modeling["_viz"] and stripped from the
-JSON report returned to the client — the Visualizer bakes them into figures.
-"""
+# all the actual ML lives here:
+#   - pearson correlation matrix + strongest pairs
+#   - kmeans (k=3) with a 2d PCA projection so the scatter is plottable
+#   - isolation forest for anomalies
+#   - a tiny pytorch autoencoder, but ONLY if torch happens to be installed
+#     (it's a soft dep on purpose, don't make people install torch for a histogram)
+#
+# the "_viz" key at the bottom holds arrays sized for plotting. it gets stripped
+# out of the json report in main.py and the visualizer bakes it into figures.
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
@@ -17,23 +16,25 @@ from sklearn.preprocessing import StandardScaler
 
 from ..utils import num_or_none
 
-try:  # optional heavy dependency
+try:  # optional, see note above
     import torch
     import torch.nn as nn
 
     HAS_TORCH = True
-except Exception:  # noqa: BLE001
+except Exception:
     torch = None
     nn = None
     HAS_TORCH = False
 
-MAX_VIZ_POINTS = 3000
+MAX_VIZ_POINTS = 3000  # cap the scatter, plotly chokes on 100k dots
 MAX_AE_ROWS = 20000
 AE_MIN_ROWS = 100
 
 
 def _autoencoder_mse(Z: np.ndarray):
-    """Reconstruction MSE per row from a small dense autoencoder, or None."""
+    """train a small dense AE on the scaled features, return per-row
+    reconstruction mse. rows it can't reconstruct well are the weird ones.
+    returns None if the dataset is too small/big for it to make sense."""
     n, d = Z.shape
     if not (AE_MIN_ROWS <= n <= MAX_AE_ROWS and d >= 3):
         return None
@@ -71,9 +72,9 @@ def modeler_agent(state: dict) -> dict:
         "autoencoder": None,
     }
     if num.shape[1] < 2 or len(df) < 5:
-        return {"modeling": modeling}
+        return {"modeling": modeling}  # not enough to do anything useful
 
-    # Working set: numeric, non-constant, imputed
+    # numeric + non-constant + imputed. a constant column breaks scaling.
     work = num.copy()
     for c in work.columns:
         if work[c].nunique(dropna=True) <= 1:
@@ -82,7 +83,7 @@ def modeler_agent(state: dict) -> dict:
     if work.shape[1] < 2 or len(work) < 5:
         return {"modeling": modeling}
 
-    # --- correlations (on the original numeric columns) ---
+    # --- correlations (on the original numeric cols, not the trimmed work set) ---
     corr = num.corr()
     cols = [str(c) for c in corr.columns]
     pairs = []
@@ -95,15 +96,15 @@ def modeler_agent(state: dict) -> dict:
     matrix = {c1: {c2: num_or_none(corr.loc[c1, c2], 3) for c2 in cols} for c1 in cols}
     modeling["correlation"] = {"matrix": matrix, "top_pairs": pairs[:8]}
 
-    # --- scale once, reuse everywhere ---
+    # scale once, every model below wants standardized features
     Z = StandardScaler().fit_transform(work.values.astype(float))
     feat_names = [str(c) for c in work.columns]
 
-    # --- PCA projection (for charts) ---
+    # --- pca, just for the 2d scatter ---
     pca = PCA(n_components=2, random_state=42)
     P = pca.fit_transform(Z)
 
-    # --- KMeans clusters ---
+    # --- kmeans ---
     labels = None
     k = 3 if len(Z) >= 15 else 2
     if len(Z) >= 2 * k:
@@ -116,7 +117,7 @@ def modeler_agent(state: dict) -> dict:
             "pca_explained_variance": [num_or_none(v, 3) for v in pca.explained_variance_ratio_],
         }
 
-    # --- Isolation Forest anomalies ---
+    # --- isolation forest, 2% contamination as a starting guess ---
     iso = IsolationForest(n_estimators=150, contamination=0.02, random_state=42)
     pred = iso.fit_predict(Z)
     anomaly_flags = pred == -1
@@ -127,7 +128,7 @@ def modeler_agent(state: dict) -> dict:
         "example_row_numbers": (np.where(anomaly_flags)[0][:20] + 1).tolist(),
     }
 
-    # --- optional PyTorch autoencoder ---
+    # --- torch AE, best effort ---
     if HAS_TORCH:
         try:
             mse = _autoencoder_mse(Z)
@@ -141,10 +142,12 @@ def modeler_agent(state: dict) -> dict:
                     "overlap_with_isolation_forest": int((ae_flags & anomaly_flags).sum()),
                     "mse_stats": {"mean": num_or_none(mse.mean(), 6), "max": num_or_none(mse.max(), 6)},
                 }
-        except Exception:  # noqa: BLE001 — AE is best-effort
+        except Exception:  # AE failing should never kill the pipeline
             modeling["autoencoder"] = {"available": False, "error": "autoencoder training failed"}
 
-    # --- chart-ready bundle (kept out of the client report) ---
+    # --- arrays for the charts ---
+    # subsample the normal points so the scatter stays light, but ALWAYS keep
+    # every anomaly, those are the interesting dots
     rng = np.random.default_rng(42)
     anom_idx = np.where(anomaly_flags)[0]
     norm_idx = np.where(~anomaly_flags)[0]

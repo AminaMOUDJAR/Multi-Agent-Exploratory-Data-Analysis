@@ -1,9 +1,7 @@
-"""Shared LangGraph state for the EDA pipeline.
-
-Every agent is a pure function `agent(state) -> partial state update`.
-The DataFrame lives only inside the pipeline (never serialized to the client);
-the final report is assembled from the smaller dict fields below.
-"""
+# shared state for the whole pipeline. each agent gets this dict and returns
+# whatever keys it wants to add/update, langgraph merges them for the next one.
+# the dataframe only exists in here while the pipeline runs, we never ship it
+# to the browser, just the small summary dicts.
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
