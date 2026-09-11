@@ -127,3 +127,7 @@ frontend/
 sample_data/       # generated demo dataset
 scripts/           # data generator
 ```
+
+## Development & Acknowledgements
+
+The architecture and multi-agent pipeline of this project were planned and designed in collaboration with AI (**GLM model**), which also assisted throughout the implementation and coding of the system.
